@@ -24,8 +24,8 @@ if not os.path.exists(image_dir):
 else:
     print(f"Dossier '{image_dir}' existant.")
 
-if api_token == "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":
-    print("\n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")
+if api_token == "":
+    print("\n")
 
     API_URL = "https://router.huggingface.co/hf-inference/models/sayeed99/segformer_b3_clothes" # Remplacez ... par le bon endpoint.
 headers = {

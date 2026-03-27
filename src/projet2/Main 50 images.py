@@ -12,7 +12,7 @@ import time
 image_dir = "i:/OC/P2/projet2/src/projet2/content/images/IMG"
 max_images = 3
 
-api_token = "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"
+api_token = ""
 API_URL = "https://router.huggingface.co/hf-inference/models/sayeed99/segformer_b3_clothes"
 
 print("Dossier courant =", os.getcwd())
