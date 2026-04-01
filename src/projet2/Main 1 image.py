@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 import requests
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -14,7 +15,13 @@ max_images = 1  # Commençons avec peu d'images
 
 # IMPORTANT: Remplacez "VOTRE_TOKEN_HUGGING_FACE_ICI" par votre véritable token API.
 # Ne partagez jamais votre token publiquement.
-api_token = "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"  # Remplacez par votre token Hugging Face
+
+load_dotenv()
+
+api_token = os.getenv("HF_API_TOKEN")
+
+if not api_token:
+    raise ValueError("HF_API_TOKEN manquant dans le fichier .env")
 
 print("Dossier courant =", os.getcwd())
 
@@ -23,9 +30,6 @@ if not os.path.exists(image_dir):
     print(f"Dossier '{image_dir}' créé. Veuillez y ajouter des images .jpg ou .png.")
 else:
     print(f"Dossier '{image_dir}' existant.")
-
-if api_token == "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":
-    print("\n")
 
     API_URL = "https://router.huggingface.co/hf-inference/models/sayeed99/segformer_b3_clothes" # Remplacez ... par le bon endpoint.
 headers = {

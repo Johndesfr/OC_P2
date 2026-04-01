@@ -9,6 +9,7 @@ import mimetypes
 import io
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from dotenv import load_dotenv
 
 # Dossier contenant les images à segmenter
 image_dir = "i:/OC/P2/projet2/src/projet2/content/images/IMG"
@@ -17,7 +18,13 @@ image_dir = "i:/OC/P2/projet2/src/projet2/content/images/IMG"
 max_images = 3
 
 # Token d'authentification Hugging Face
-api_token = "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"
+
+load_dotenv()
+
+api_token = os.getenv("HF_API_TOKEN")
+
+if not api_token:
+    raise ValueError("HF_API_TOKEN manquant dans le fichier .env")
 
 # URL du modèle de segmentation
 API_URL = "https://router.huggingface.co/hf-inference/models/sayeed99/segformer_b3_clothes"
