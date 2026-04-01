@@ -35,23 +35,19 @@ else:
 # Extensions d'images acceptées
 extensions_valides = (".jpg", ".jpeg", ".png", ".webp")
 
-# Construit la liste des chemins des images à traiter
-# On filtre uniquement les fichiers ayant une extension valide
-# Puis on limite à max_images
+# Construction de la liste des images à traiter
 image_paths = [
     os.path.join(image_dir, f)
     for f in os.listdir(image_dir)
     if f.lower().endswith(extensions_valides)
 ][:max_images]
 
-# Vérifie si des images ont été trouvées
 if not image_paths:
     print(f"Aucune image trouvée dans '{image_dir}'. Veuillez y ajouter des images.")
 else:
     print(f"{len(image_paths)} image(s) à traiter.")
 
-# Dictionnaire de correspondance entre les labels du modèle
-# et les identifiants numériques utilisés dans le masque final
+# Correspondance nom de classe -> identifiant numérique
 CLASS_MAPPING = {
     "Background": 0,
     "Hat": 1,
@@ -71,6 +67,29 @@ CLASS_MAPPING = {
     "Right-arm": 15,
     "Bag": 16,
     "Scarf": 17
+}
+
+# Correspondance identifiant numérique -> libellé lisible en français
+# Ces libellés serviront pour l'affichage du texte sur le masque
+CLASS_NAMES_FR = {
+    0: "Fond",
+    1: "Chapeau",
+    2: "Cheveux",
+    3: "Lunettes",
+    4: "Haut / veste",
+    5: "Jupe",
+    6: "Pantalon",
+    7: "Robe",
+    8: "Ceinture",
+    9: "Chaussure gauche",
+    10: "Chaussure droite",
+    11: "Visage",
+    12: "Jambe gauche",
+    13: "Jambe droite",
+    14: "Bras gauche",
+    15: "Bras droit",
+    16: "Sac",
+    17: "Écharpe"
 }
 
 def get_image_dimensions(img_path):
@@ -94,40 +113,39 @@ def decode_base64_mask(base64_string, width, height):
     Retour :
     - masque sous forme de tableau NumPy 2D
     """
-    # Décodage base64 -> bytes
+    # Décodage de la chaîne base64 en bytes
     mask_data = base64.b64decode(base64_string)
 
-    # Lecture du masque en image PIL depuis les bytes
+    # Lecture du masque comme image PIL
     mask_image = Image.open(io.BytesIO(mask_data))
 
     # Conversion en tableau NumPy
     mask_array = np.array(mask_image)
 
-    # Si le masque possède plusieurs canaux (ex. RGB),
-    # on ne conserve qu'un seul canal
+    # Si le masque a plusieurs canaux (par exemple RGB),
+    # on garde uniquement le premier canal
     if len(mask_array.shape) == 3:
         mask_array = mask_array[:, :, 0]
 
-    # Redimensionnement à la taille de l'image d'origine
-    # avec interpolation nearest pour conserver des classes entières
+    # Redimensionnement à la taille de l'image source
+    # Image.NEAREST est adapté aux masques de segmentation
     mask_image = Image.fromarray(mask_array).resize((width, height), Image.NEAREST)
 
     return np.array(mask_image)
 
 def create_masks(results, width, height):
     """
-    Construit un masque de segmentation final unique
-    à partir de la liste des résultats renvoyés par l'API.
+    Construit un masque unique à partir de la liste des masques renvoyés par l'API.
 
     Paramètres :
-    - results : liste des objets retournés par l'API
+    - results : liste des résultats JSON de l'API
     - width : largeur de l'image d'origine
     - height : hauteur de l'image d'origine
 
     Retour :
-    - masque combiné sous forme de tableau NumPy
+    - masque final combiné sous forme de tableau NumPy
     """
-    # Initialisation du masque final avec 0 = arrière-plan
+    # Initialisation du masque final avec 0 = fond
     combined_mask = np.zeros((height, width), dtype=np.uint8)
 
     # Premier passage : on applique toutes les classes sauf le fond
@@ -135,18 +153,17 @@ def create_masks(results, width, height):
         label = result["label"]
         class_id = CLASS_MAPPING.get(label, 0)
 
-        # Si la classe n'est pas reconnue ou correspond au fond, on ignore
+        # On ignore le fond dans un premier temps
         if class_id == 0:
             continue
 
         # Décodage du masque de la classe
         mask_array = decode_base64_mask(result["mask"], width, height)
 
-        # On place l'identifiant de classe sur les pixels actifs
+        # Affectation de l'identifiant de classe aux pixels actifs
         combined_mask[mask_array > 0] = class_id
 
-    # Deuxième passage : traitement spécifique du background
-    # pour remettre à 0 les zones d'arrière-plan si nécessaire
+    # Second passage : on réapplique explicitement le fond
     for result in results:
         if result["label"] == "Background":
             mask_array = decode_base64_mask(result["mask"], width, height)
@@ -156,8 +173,8 @@ def create_masks(results, width, height):
 
 def segment_images_batch(list_of_image_paths):
     """
-    Traite une liste d'images en batch :
-    - lecture binaire de chaque image
+    Segmente plusieurs images en batch :
+    - lecture du fichier image
     - envoi à l'API
     - récupération du JSON
     - création du masque final
@@ -169,7 +186,6 @@ def segment_images_batch(list_of_image_paths):
     """
     batch_segmentations = []
 
-    # Boucle sur toutes les images avec barre de progression
     for image_path in tqdm(list_of_image_paths, desc="Segmentation en cours"):
         try:
             print(f"\nTraitement de l'image : {image_path}")
@@ -183,58 +199,54 @@ def segment_images_batch(list_of_image_paths):
             if content_type is None:
                 raise ValueError(f"Impossible de déterminer le type MIME pour {image_path}")
 
-            # 3) Définir une stratégie de retry pour rendre les requêtes plus robustes
+            # 3) Définition d'une stratégie de retry pour la robustesse HTTP
             retry_strategy = Retry(
-                total=5,  # nombre total de tentatives
-                backoff_factor=1,  # temporisation progressive entre les retries
-                status_forcelist=[429, 500, 502, 503, 504],  # codes HTTP à retenter
-                allowed_methods=frozenset(["POST"]),  # on autorise aussi les retries sur POST
+                total=5,
+                backoff_factor=1,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=frozenset(["POST"]),
                 raise_on_status=False,
                 respect_retry_after_header=True,
             )
 
-            # 4) Création de l'adaptateur HTTP avec la stratégie de retry
+            # 4) Adaptateur HTTP avec gestion des retries
             adapter = HTTPAdapter(max_retries=retry_strategy)
 
-            # 5) Création d'une session HTTP
+            # 5) Session HTTP temporaire
             with requests.Session() as session:
-                # On monte l'adaptateur sur HTTPS
                 session.mount("https://", adapter)
-
-                # Headers communs de la session
                 session.headers.update({
                     "Authorization": f"Bearer {api_token}",
                     "Accept": "application/json"
                 })
 
-                # 6) Envoi de l'image à l'API via POST
+                # 6) Envoi de l'image à l'API
                 response = session.post(
                     API_URL,
                     headers={"Content-Type": content_type},
                     data=image_data,
-                    timeout=(10, 90)  # timeout connexion / lecture
+                    timeout=(10, 90)
                 )
 
-                # 7) Déclenche une exception si code HTTP 4xx ou 5xx
+                # 7) Vérification du code HTTP
                 response.raise_for_status()
 
                 # 8) Conversion de la réponse en JSON
                 result = response.json()
 
-            # 9) Récupération des dimensions de l'image d'origine
+            # 9) Récupération de la taille de l'image d'origine
             width, height = get_image_dimensions(image_path)
 
-            # 10) Création du masque final combiné
+            # 10) Construction du masque final
             final_mask = create_masks(result, width, height)
 
-            # 11) Sauvegarde du résultat dans la liste finale
+            # 11) Sauvegarde du résultat
             batch_segmentations.append({
                 "image_path": image_path,
                 "mask": final_mask
             })
 
         except Exception as e:
-            # En cas d'erreur, on logge et on stocke un masque à None
             print(f"Une erreur est survenue pour {image_path} : {e}")
             batch_segmentations.append({
                 "image_path": image_path,
@@ -243,7 +255,79 @@ def segment_images_batch(list_of_image_paths):
 
     return batch_segmentations
 
-# Lancer le traitement batch si des images ont été trouvées
+def display_mask_with_labels(original_image, final_mask):
+    """
+    Affiche côte à côte :
+    - l'image originale
+    - le masque brut (naturel)
+    - le masque coloré avec labels
+
+    Paramètres :
+    - original_image : image PIL originale
+    - final_mask : masque NumPy final
+    """
+    plt.figure(figsize=(18, 5))
+
+    # -----------------------------
+    # Sous-figure 1 : image originale
+    # -----------------------------
+    plt.subplot(1, 3, 1)
+    plt.imshow(original_image)
+    plt.title("Image originale")
+    plt.axis("off")
+
+    # -----------------------------
+    # Sous-figure 2 : masque brut / naturel
+    # -----------------------------
+    plt.subplot(1, 3, 2)
+    plt.imshow(final_mask, cmap="gray")
+    plt.title("Masque brut")
+    plt.axis("off")
+
+    # -----------------------------
+    # Sous-figure 3 : masque coloré avec labels
+    # -----------------------------
+    ax = plt.subplot(1, 3, 3)
+    ax.imshow(final_mask, cmap="tab20", vmin=0, vmax=17)
+    ax.set_title("Masque coloré et labellisé")
+    ax.axis("off")
+
+    # Récupération des classes présentes dans le masque
+    unique_classes = np.unique(final_mask)
+
+    # Suppression du fond
+    unique_classes = unique_classes[unique_classes != 0]
+
+    # Ajout d'un label texte au centre moyen de chaque zone de classe
+    for class_id in unique_classes:
+        positions = np.argwhere(final_mask == class_id)
+
+        if len(positions) == 0:
+            continue
+
+        # Centre moyen de la zone
+        y_center = int(np.mean(positions[:, 0]))
+        x_center = int(np.mean(positions[:, 1]))
+
+        # Récupération du texte à afficher
+        label_text = CLASS_NAMES_FR.get(class_id, f"Classe {class_id}")
+
+        # Affichage du texte sur le masque coloré
+        ax.text(
+            x_center,
+            y_center,
+            label_text,
+            color="white",
+            fontsize=9,
+            ha="center",
+            va="center",
+            bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", pad=2)
+        )
+
+    plt.tight_layout()
+    plt.show()
+
+# Lancement du batch
 if image_paths:
     print(f"\nTraitement de {len(image_paths)} image(s) en batch...")
     batch_seg_results = segment_images_batch(image_paths)
@@ -257,29 +341,14 @@ nb_affiches = 0
 
 for item in batch_seg_results:
     if item["mask"] is not None:
-        # Ouvre l'image originale
+        # Ouverture de l'image originale
         original_image = Image.open(item["image_path"])
 
-        # Récupère le masque calculé
+        # Récupération du masque
         final_mask = item["mask"]
 
-        # Crée une figure d'affichage
-        plt.figure(figsize=(12, 5))
-
-        # Sous-figure 1 : image originale
-        plt.subplot(1, 2, 1)
-        plt.imshow(original_image)
-        plt.title("Image originale")
-        plt.axis("off")
-
-        # Sous-figure 2 : masque segmenté
-        plt.subplot(1, 2, 2)
-        plt.imshow(final_mask, cmap="tab20", vmin=0, vmax=17)
-        plt.title("Masque segmenté")
-        plt.axis("off")
-
-        # Affiche les deux images
-        plt.show()
+        # Affichage du masque avec labels texte
+        display_mask_with_labels(original_image, final_mask)
 
         nb_affiches += 1
         if nb_affiches == 3:

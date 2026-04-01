@@ -10,7 +10,7 @@ import io
 import time
 
 image_dir = "i:/OC/P2/projet2/src/projet2/content/images/IMG"  # Exemple : si vous êtes sur Colab et avez uploadé un dossier
-max_images = 10  # Commençons avec peu d'images
+max_images = 1  # Commençons avec peu d'images
 
 # IMPORTANT: Remplacez "VOTRE_TOKEN_HUGGING_FACE_ICI" par votre véritable token API.
 # Ne partagez jamais votre token publiquement.
@@ -24,7 +24,7 @@ if not os.path.exists(image_dir):
 else:
     print(f"Dossier '{image_dir}' existant.")
 
-if api_token == "":
+if api_token == "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":
     print("\n")
 
     API_URL = "https://router.huggingface.co/hf-inference/models/sayeed99/segformer_b3_clothes" # Remplacez ... par le bon endpoint.
