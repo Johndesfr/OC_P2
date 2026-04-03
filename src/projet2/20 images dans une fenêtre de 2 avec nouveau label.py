@@ -16,7 +16,7 @@ from matplotlib.patches import Patch
 image_dir = "i:/OC/P2/projet2/src/projet2/content/images/IMG"
 
 # Nombre maximum d'images à traiter
-max_images = 20
+max_images = 4
 
 # Nombre d'images affichées par fenêtre
 images_per_window = 2
@@ -158,8 +158,6 @@ def create_masks(results, width, height):
     """
     Construit un masque final robuste à partir des résultats API.
 
-    Fusion appliquée :
-    - Left-shoe (9) et Right-shoe (10) deviennent une seule classe : Chaussures (9)
 
     Stratégie :
     - décodage de tous les masques
@@ -170,7 +168,7 @@ def create_masks(results, width, height):
     score_map = np.full((height, width), -1.0, dtype=np.float32)
 
     class_priority = {
-        9: 100,   # Chaussures fusionnées
+        9: 100,   # Chaussures 
         16: 80,   # Sac
         8: 70,    # Ceinture
         4: 60,    # Haut
@@ -349,7 +347,7 @@ def segment_images_batch(list_of_image_paths):
                 final_mask = create_masks(result, width, height)
 
                 print("Classes présentes :", np.unique(final_mask))
-                print("Pixels chaussures :", np.sum(final_mask == SHOES_CLASS_ID))
+             
 
                 batch_segmentations.append({
                     "image_path": image_path,
